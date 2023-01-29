@@ -1,17 +1,22 @@
-// TODO:
-// - General payments [+]
-// - Custom payments [+]
-// - Price setters [+]
-// - Check USDT balance on contract [+]
-// - Withdraw USDT to wallet [+]
-// - Add events [+]
-// - Modify the bill [+]
-// - Use nested mapping for bills [+]
-
 pragma solidity ^0.8.9;
 //SPDX-License-Identifier: MIT
 
 // -------------------------------------------------------------------------------------------------------
+// kys.systems                                                                              Payment module
+//
+//
+//
+//
+// UI:
+// - [Admin] Create new bill      =====>  createBill([address] user, [uint] amount, [string] billId)
+// - [Admin] Change billed amount =====>  changeBilledAmount([address] user, [string] billId, [uint] amount)
+// - Read billed amount           =====>  readBilledAmount([address] user, [string] billId)
+// - Charge for "no interview"    =====>  generalPayments([uint8] 0)
+// - Charge for "with interview"  =====>  generalPayments([uint8] 2)
+// - Charge for custom offer      =====>  customPayments([uint] billId)
+//
+// -------------------------------------------------------------------------------------------------------
+//
 // For custom offer user has to give us his address beforehand
 // Flow:
 //  1. Create bill for address with amount, bill id
@@ -24,6 +29,7 @@ pragma solidity ^0.8.9;
 //      - spender => this contract
 //      - amount => price/amount from bill
 //  2. Call either generalPayments or customPayments
+//
 // -------------------------------------------------------------------------------------------------------
 
 import "@openzeppelin/contracts/access/Ownable.sol"; 
@@ -61,13 +67,13 @@ contract KYCPayments is Ownable {
 
     // @param                   [address] user => user completed a payment
     // @param                   [uint256] amount => payment amount
-    // @param                   [uint8] type => service option
+    // @param                   [uint8] _type => service option
     //                                          0 — Owner no interview
     //                                          1 - Owner with interview 
     //                                          3 - Custom offer
     // @param                   [string] billId => bill id
     // @dev                     billId returns "none" for predefined payments (first 2 types)
-    event                       PaymentCompleted(address indexed user, uint256 amount, uint8 type, string billId);
+    event                       PaymentCompleted(address indexed user, uint256 amount, uint8 _type, string billId);
 
 
 
@@ -133,23 +139,23 @@ contract KYCPayments is Ownable {
     // @notice                  creates a new bill for user
     // @param                   [address] _addr => user billed
     // @param                   [uint256] _amount => billed amount
-    // @param                   [uint256] _billId => bill id
+    // @param                   [string] _billId => bill id
     function                    createBill(address _addr, uint256 _amount, string memory _billId) external onlyOwner {
         require(dbBills[_addr].idUsed[_billId], "Bill id is not available!");
         dbBills[_addr].amountBilled[_billId] = _amount;
-        dbBills[_addr].idUsed = true;
+        dbBills[_addr].idUsed[_billId] = true;
     }
 
     // @notice                  billed amount getter
     // @param                   [address] _addr => user billed
-    // @param                   [uint256] _billId => bill id
+    // @param                   [string] _billId => bill id
     function                    readBilledAmount(address _addr, string memory _billId) external view onlyAuthorized(_addr) returns(uint256) {
       return(dbBills[_addr].amountBilled[_billId]);
     }
 
     // @notice                  billed amount setter
     // @param                   [address] _addr => user billed
-    // @param                   [uint256] _billId => bill id
+    // @param                   [string] _billId => bill id
     // @param                   [uint256] _new_amount => new bill amount
     function                    changeBilledAmount(address _addr, string memory _billId, uint256 _new_amount) external onlyOwner {
         dbBills[_addr].amountBilled[_billId] = _new_amount;
@@ -181,8 +187,8 @@ contract KYCPayments is Ownable {
     }
 
     // @notice                  payment via bill
-    // @param                   [uint256] _billId => bill id
-    function                    customPayments(uint256 _billId) external {
+    // @param                   [string] _billId => bill id
+    function                    customPayments(string memory _billId) external {
       uint256                   amount;
 
       amount = dbBills[msg.sender].amountBilled[_billId];
