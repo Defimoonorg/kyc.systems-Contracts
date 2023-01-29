@@ -1,26 +1,30 @@
 // TODO:
 // - General payments [+]
-// - Custom payments
+// - Custom payments [+]
 // - Price setters [+]
-// - check USDT balance on contract [+]
+// - Check USDT balance on contract [+]
 // - Withdraw USDT to wallet [+]
-// - Add events
+// - Add events [+]
+// - Modify the bill [+]
+// - Use nested mapping for bills [+]
 
 pragma solidity ^0.8.9;
 //SPDX-License-Identifier: MIT
 
-// For custom subscription user has to give us his addr beforehand
+// -------------------------------------------------------------------------------------------------------
+// For custom offer user has to give us his address beforehand
 // Flow:
 //  1. Create bill for address with amount, bill id
 //  2. User calls function from known address, provides bill id
-//  3. Retrieves amount for this bill
-
+//  3. Pays
+//
 // How to charge users:
-//  1. Approve user spending allowence on USDT contract
+//  1. Approve user spending allowance on USDT contract
 //      - Call "approve" on USDT contract 
 //      - spender => this contract
-//      - ammount => price/amount from bill
+//      - amount => price/amount from bill
 //  2. Call either generalPayments or customPayments
+// -------------------------------------------------------------------------------------------------------
 
 import "@openzeppelin/contracts/access/Ownable.sol"; 
 import "./interfaces/IERC20.sol";
@@ -31,21 +35,39 @@ contract KYCPayments is Ownable {
     // ------------------------------- DECLARATIONS
     // -------------------------------------------------------------------------------------------------------
 
-    // @notice                  bill structure keeps track of custom prices
+    // @notice                  bill keeps track of custom prices
     struct                      Bill {
-    uint256                     amount;
-    string                      billId;
+      mapping(string => uint)   amountBilled;
+      mapping(string => bool)   idUsed;
     }
-    mapping(address=>Bill[])    dbBills;
-    mapping(string=>address)    usedIds;
+
+    // @dev                     nested mapping address => (string => int)
+    mapping(address => Bill)    dbBills;
 
     // @notice                  USDT token address via interface
-    IERC20  public              USDT;
+    IERC20 public               USDT;
 
     // @notice                  an array of prices for services
     //                          0 — Owner no interview
     //                          1 - Owner with interview 
     uint256[] public            prices;
+
+
+
+
+    // -------------------------------------------------------------------------------------------------------
+    // ------------------------------- EVENTS
+    // -------------------------------------------------------------------------------------------------------
+
+    // @param                   [address] user => user completed a payment
+    // @param                   [uint256] amount => payment amount
+    // @param                   [uint8] type => service option
+    //                                          0 — Owner no interview
+    //                                          1 - Owner with interview 
+    //                                          3 - Custom offer
+    // @param                   [string] billId => bill id
+    // @dev                     billId returns "none" for predefined payments (first 2 types)
+    event                       PaymentCompleted(address indexed user, uint256 amount, uint8 type, string billId);
 
 
 
@@ -83,7 +105,7 @@ contract KYCPayments is Ownable {
         prices[_priceToChange] = _newPrice;
     }
 
-    // @notice                  function to return contract USDT balance
+    // @notice                  function to return contract's USDT balance
     function                    readBalance() view external onlyOwner returns(uint256) {
         return(USDT.balanceOf(address(this)));
     }
@@ -102,55 +124,35 @@ contract KYCPayments is Ownable {
     // ------------------------------- CUSTOM OFFERS
     // -------------------------------------------------------------------------------------------------------
 
-    // @notice                  restricts reading billed info only to authorized users
+    // @notice                  restricts reading billed info only to address owner & owner
     modifier                    onlyAuthorized(address _addr) {
         require(msg.sender == _addr || msg.sender == owner(), "Not authorized!");
         _;
     }
 
-    // @notice                  checks if billId from storage is equal to provided one
-    // @param                   [string] _dbbillId => storage billId
-    // @param                   [string] _billId => provided billId
-    function isEqual(string memory _dbBillId, string memory _billId) private pure returns(bool) {
-        return keccak256(abi.encodePacked(_dbBillId)) == keccak256(abi.encodePacked(_billId));
-    }
-
     // @notice                  creates a new bill for user
     // @param                   [address] _addr => user billed
-    // @param                   [uint256] _price => billed ammount
+    // @param                   [uint256] _amount => billed amount
     // @param                   [uint256] _billId => bill id
-    function createBill(address _addr, uint256 _price, string memory _billId) external onlyOwner {
-        Bill memory             new_bill;
-
-        require(usedIds[_billId] != _addr, "billId is not available!");
-        usedIds[_billId] = _addr;
-        new_bill.amount = _price;
-        new_bill.billId = _billId;
-        dbBills[_addr].push(new_bill);
+    function                    createBill(address _addr, uint256 _amount, string memory _billId) external onlyOwner {
+        require(dbBills[_addr].idUsed[_billId], "Bill id is not available!");
+        dbBills[_addr].amountBilled[_billId] = _amount;
+        dbBills[_addr].idUsed = true;
     }
 
-    // @notice                  billed ammount getter
+    // @notice                  billed amount getter
     // @param                   [address] _addr => user billed
     // @param                   [uint256] _billId => bill id
-    function readBilledAmmount(address _addr, string memory _billId) external view onlyAuthorized(_addr) returns(uint256) {
-        uint32                  i;
-
-        while(isEqual(dbBills[_addr][i].billId, _billId) == false) {
-            i++;
-        }
-        return (dbBills[_addr][i].amount);
+    function                    readBilledAmount(address _addr, string memory _billId) external view onlyAuthorized(_addr) returns(uint256) {
+      return(dbBills[_addr].amountBilled[_billId]);
     }
 
-    // @notice                  billed ammount setter
+    // @notice                  billed amount setter
     // @param                   [address] _addr => user billed
     // @param                   [uint256] _billId => bill id
-    function changeBilledAmmount(address _addr, string memory _billId) external view onlyOwner returns(uint256) {
-        uint32                  i;
-
-        while(isEqual(dbBills[_addr][i].billId, _billId) == false) {
-            i++;
-        }
-        return (dbBills[_addr][i].amount);
+    // @param                   [uint256] _new_amount => new bill amount
+    function                    changeBilledAmount(address _addr, string memory _billId, uint256 _new_amount) external onlyOwner {
+        dbBills[_addr].amountBilled[_billId] = _new_amount;
     }
 
 
@@ -169,8 +171,31 @@ contract KYCPayments is Ownable {
         require(_offerChoice == 0 || _offerChoice == 1, "Incorrect option!");
         require(USDT.allowance(msg.sender, address(this)) >= prices[_offerChoice],
                       "Not enough allowance, approve your USDT first!");
-        require(USDT.balanceOf(msg.sender) >= prices[_offerChoice], "Not enough USDT tokens!");
-        require(USDT.transferFrom(msg.sender, address(this), prices[_offerChoice]) == true, "Failed to transfer USDT!");
+        require(USDT.balanceOf(msg.sender) >= prices[_offerChoice], 
+                      "Not enough USDT!");
+        require(USDT.transferFrom(msg.sender, 
+                                  address(this), 
+                                  prices[_offerChoice]) == true, 
+                                  "Failed to transfer USDT!");
+        emit PaymentCompleted(msg.sender, prices[_offerChoice], _offerChoice, "none");
+    }
+
+    // @notice                  payment via bill
+    // @param                   [uint256] _billId => bill id
+    function                    customPayments(uint256 _billId) external {
+      uint256                   amount;
+
+      amount = dbBills[msg.sender].amountBilled[_billId];
+      require(amount > 0, "Invalid bill!");
+      require(USDT.allowance(msg.sender, address(this)) >= amount,
+                      "Not enough allowance, approve your USDT first!");
+      require(USDT.balanceOf(msg.sender) >= amount, 
+                      "Not enough USDT!");
+      require(USDT.transferFrom(msg.sender, 
+                                address(this), 
+                                amount) == true, 
+                                "Failed to transfer USDT!");
+      emit PaymentCompleted(msg.sender, amount, 2, _billId);
     }
 
 
