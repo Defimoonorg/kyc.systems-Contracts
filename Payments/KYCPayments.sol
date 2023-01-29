@@ -1,10 +1,10 @@
 // TODO:
-// - Use access controll
-// - Approve USDT
-// - General payments
+// - General payments [+]
 // - Custom payments
-// - Price setters
-// - Withdraw USDT to wallet
+// - Price setters [+]
+// - check USDT balance on contract [+]
+// - Withdraw USDT to wallet [+]
+// - Add events
 
 pragma solidity ^0.8.9;
 //SPDX-License-Identifier: MIT
@@ -14,6 +14,13 @@ pragma solidity ^0.8.9;
 //  1. Create bill for address with amount, bill id
 //  2. User calls function from known address, provides bill id
 //  3. Retrieves amount for this bill
+
+// How to charge users:
+//  1. Approve user spending allowence on USDT contract
+//      - Call "approve" on USDT contract 
+//      - spender => this contract
+//      - ammount => price/amount from bill
+//  2. Call either generalPayments or customPayments
 
 import "@openzeppelin/contracts/access/Ownable.sol"; 
 import "./interfaces/IERC20.sol";
@@ -58,6 +65,35 @@ contract KYCPayments is Ownable {
         _transferOwnership(msg.sender);
     }
 
+
+
+
+    // -------------------------------------------------------------------------------------------------------
+    // ------------------------------- FIN CONTROL
+    // -------------------------------------------------------------------------------------------------------
+
+    // @notice                  allows to modify the price
+    // @param                   [uint8] _priceToChange => offer index in the prices array:
+    //                                                     0 — Owner no interview
+    //                                                     1 - Owner with interview 
+    // @param                   [uint256] _newPrice => new price
+    function                    changePrice(uint8 _priceToChange, uint256 _newPrice) external onlyOwner {
+        require(_priceToChange == 0 || _priceToChange == 1, "Incorrect option!");
+        require(_newPrice > 0, "New price can't be zero!");
+        prices[_priceToChange] = _newPrice;
+    }
+
+    // @notice                  function to return contract USDT balance
+    function                    readBalance() view external onlyOwner returns(uint256) {
+        return(USDT.balanceOf(address(this)));
+    }
+
+    // @notice                  withdraws contract balance to specified address
+    // @param                   [uint256] _newPrice => new price
+    function                    withdrawBalance(address _to) external onlyOwner {
+        require(_to != address(0), "Address can't be zero!");
+        require(USDT.transfer(_to, USDT.balanceOf(address(this))) == true, "Failed to transfer USDT!");
+    }
 
 
 
@@ -115,5 +151,38 @@ contract KYCPayments is Ownable {
             i++;
         }
         return (dbBills[_addr][i].amount);
+    }
+
+
+
+
+
+    // -------------------------------------------------------------------------------------------------------
+    // ------------------------------- PAYMENTS
+    // -------------------------------------------------------------------------------------------------------
+
+    // @notice                  predefined payment
+    // @param                   [uint8] _offerChoice => offer index in the prices array:
+    //                                                  0 — Owner no interview
+    //                                                  1 - Owner with interview 
+    function                    generalPayments(uint8 _offerChoice) external {
+        require(_offerChoice == 0 || _offerChoice == 1, "Incorrect option!");
+        require(USDT.allowance(msg.sender, address(this)) >= prices[_offerChoice],
+                      "Not enough allowance, approve your USDT first!");
+        require(USDT.balanceOf(msg.sender) >= prices[_offerChoice], "Not enough USDT tokens!");
+        require(USDT.transferFrom(msg.sender, address(this), prices[_offerChoice]) == true, "Failed to transfer USDT!");
+    }
+
+
+
+
+
+    // -------------------------------------------------------------------------------------------------------
+    // ------------------------------- MISC
+    // -------------------------------------------------------------------------------------------------------
+
+    // @notice                  disable renounceOwnership
+    function                    renounceOwnership() public pure override {
+        require(false, "This function is disabled");
     }
 }

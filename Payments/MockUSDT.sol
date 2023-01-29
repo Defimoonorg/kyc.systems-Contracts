@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: MIT
+//
+// Token contract interface
+
 pragma solidity ^0.8.9;
 
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
-
-contract MockUSDT is ERC20, ERC20Burnable {
-    constructor() ERC20("MockUSDT", "MUSDT") {}
-
-    function mint(address to, uint256 amount) public {
-        _mint(to, amount);
-    }
+interface IERC20 {
+  function        balanceOf(address account) external view returns (uint256);
+  function        transferFrom(address from,
+                               address to,
+                               uint256 amount
+                               ) external returns (bool);
+  function        transfer(address to, uint256 amount) external returns (bool);
+  function        approve(address spender, uint256 amount) external returns (bool);
+  function        allowance(address owner, address spender) external view returns (uint256);
 }
