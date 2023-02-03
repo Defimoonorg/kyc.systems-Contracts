@@ -33,7 +33,8 @@ pragma solidity ^0.8.9;
 // -------------------------------------------------------------------------------------------------------
 
 import "@openzeppelin/contracts/access/Ownable.sol"; 
-import "./interfaces/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+//import "./interfaces/IERC20.sol";
 
 contract KYCPayments is Ownable {
 
@@ -141,7 +142,7 @@ contract KYCPayments is Ownable {
     // @param                   [uint256] _amount => billed amount
     // @param                   [string] _billId => bill id
     function                    createBill(address _addr, uint256 _amount, string memory _billId) external onlyOwner {
-        require(dbBills[_addr].idUsed[_billId], "Bill id is not available!");
+        require(!dbBills[_addr].idUsed[_billId], "Bill id is not available!");
         dbBills[_addr].amountBilled[_billId] = _amount;
         dbBills[_addr].idUsed[_billId] = true;
     }
